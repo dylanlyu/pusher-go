@@ -20,13 +20,12 @@ profile.cov
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
-# Go workspace file
-go.work
-go.work.sum
-
 # env file
 .env
 
 # Editor/IDE
 # .idea/
 # .vscode/
+
+push-notifications-go-1.1.0/
+pusher-http-go-5.1.1/
