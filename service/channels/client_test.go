@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dylanlyu/pusher-go/channels"
+	"github.com/dylanlyu/pusher-go/service/channels"
 )
 
 // roundTripFunc is a transport-level mock that avoids real network calls.

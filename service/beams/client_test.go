@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dylanlyu/pusher-go/beams"
+	"github.com/dylanlyu/pusher-go/service/beams"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/crypto/nacl/secretbox"
 
-	"github.com/dylanlyu/pusher-go/channels"
+	"github.com/dylanlyu/pusher-go/service/channels"
 )
 
 // buildEncryptedEventData builds a base64+nacl-encrypted event payload

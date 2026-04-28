@@ -3,7 +3,7 @@ package channels_test
 import (
 	"testing"
 
-	"github.com/dylanlyu/pusher-go/channels"
+	"github.com/dylanlyu/pusher-go/service/channels"
 )
 
 func TestValidChannel(t *testing.T) {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dylanlyu/pusher-go/channels"
+	"github.com/dylanlyu/pusher-go/service/channels"
 )
 
 func TestTriggerWithParams_Success(t *testing.T) {
