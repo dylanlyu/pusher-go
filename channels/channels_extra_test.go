@@ -3,6 +3,9 @@ package channels_test
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/dylanlyu/pusher-go/channels"
@@ -193,5 +196,59 @@ func TestChannelsList_HTTPError(t *testing.T) {
 	_, err := c.Channels(context.Background(), channels.ChannelsParams{})
 	if err == nil {
 		t.Error("Channels() expected error on HTTP 500")
+	}
+}
+
+func TestTerminateUserConnections_Success(t *testing.T) {
+	c, _ := channels.New("123", "key", "secret",
+		channels.WithHTTPClient(mockHTTPClient(200, `{}`)),
+	)
+	err := c.TerminateUserConnections(context.Background(), "user123")
+	if err != nil {
+		t.Errorf("TerminateUserConnections() unexpected error: %v", err)
+	}
+}
+
+func TestTerminateUserConnections_InvalidUserID(t *testing.T) {
+	c, _ := channels.New("123", "key", "secret")
+	err := c.TerminateUserConnections(context.Background(), "")
+	if err == nil {
+		t.Error("TerminateUserConnections() expected error for empty user ID")
+	}
+}
+
+func TestTerminateUserConnections_HTTPError(t *testing.T) {
+	c, _ := channels.New("123", "key", "secret",
+		channels.WithHTTPClient(mockHTTPClient(400, `{"error":"bad request"}`)),
+	)
+	err := c.TerminateUserConnections(context.Background(), "user123")
+	if err == nil {
+		t.Error("TerminateUserConnections() expected error on HTTP 400")
+	}
+}
+
+func TestTerminateUserConnections_VerifyRequest(t *testing.T) {
+	var capturedReq *http.Request
+	c, _ := channels.New("123", "key", "secret",
+		channels.WithHTTPClient(&http.Client{
+			Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				capturedReq = r
+				return &http.Response{
+					StatusCode: 200,
+					Body:       io.NopCloser(strings.NewReader(`{}`)),
+					Header:     make(http.Header),
+				}, nil
+			}),
+		}),
+	)
+	_ = c.TerminateUserConnections(context.Background(), "user123")
+	if capturedReq.Method != http.MethodPost {
+		t.Errorf("expected POST, got %s", capturedReq.Method)
+	}
+	if !strings.Contains(capturedReq.URL.Path, "user123") {
+		t.Errorf("URL path does not contain user ID: %s", capturedReq.URL.Path)
+	}
+	if !strings.Contains(capturedReq.URL.Path, "terminate_connections") {
+		t.Errorf("URL path does not contain terminate_connections: %s", capturedReq.URL.Path)
 	}
 }

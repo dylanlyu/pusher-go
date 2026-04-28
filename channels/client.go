@@ -15,7 +15,7 @@ import (
 
 const (
 	libraryName    = "pusher-go"
-	libraryVersion = "0.1.0"
+	libraryVersion = "1.0.0"
 	maxChannels    = 100
 )
 
@@ -40,6 +40,7 @@ type Client interface {
 	AuthorizePrivateChannel(params []byte) ([]byte, error)
 	AuthorizePresenceChannel(params []byte, member MemberData) ([]byte, error)
 	AuthenticateUser(params []byte, userData map[string]any) ([]byte, error)
+	TerminateUserConnections(ctx context.Context, userID string) error
 	Webhook(header http.Header, body []byte) (*Webhook, error)
 }
 
@@ -265,6 +266,19 @@ func (c *client) GetChannelUsers(ctx context.Context, name string) (*Users, erro
 		return nil, fmt.Errorf("channels: parse users response: %w", err)
 	}
 	return &users, nil
+}
+
+func (c *client) TerminateUserConnections(ctx context.Context, userID string) error {
+	if !validUserID(userID) {
+		return fmt.Errorf("channels: invalid user ID %q", userID)
+	}
+	path := fmt.Sprintf("/apps/%s/users/%s/terminate_connections", c.cfg.appID, userID)
+	u, err := buildRequestURL("POST", c.cfg.host, path, c.cfg.key, c.cfg.secret, c.cfg.secure, nil, nil, c.cfg.cluster)
+	if err != nil {
+		return err
+	}
+	_, err = request.Do(ctx, c.cfg.httpClientOrDefault(), "POST", u, nil, defaultHeaders())
+	return err
 }
 
 // --- Authorization / Authentication ---

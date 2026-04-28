@@ -23,7 +23,7 @@ const (
 	maxUsersPerPublish = 1000
 	tokenTTL           = 24 * time.Hour
 	libraryName        = "pusher-go-beams"
-	libraryVersion     = "0.1.0"
+	libraryVersion     = "1.0.0"
 )
 
 var interestRegex = regexp.MustCompile(`^[a-zA-Z0-9_\-=@,.;]+$`)
