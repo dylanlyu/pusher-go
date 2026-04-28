@@ -14,15 +14,17 @@
 # updates the require version in all consumer go.mod files.
 set -euo pipefail
 
-# ---------------------------------------------------------------------------
-# Dependency graph: which modules consume each library module
-# ---------------------------------------------------------------------------
-declare -A CONSUMERS
-CONSUMERS[internal]="channels beams"
-CONSUMERS[config]="channels beams"
-
 # All independently-tagged modules (excludes pusher which is an empty shell)
-ALL_MODULES=(channels beams internal config)
+ALL_MODULES="channels beams internal config"
+
+# Returns the space-separated list of consumer modules for a given library module.
+consumers_of() {
+  case "$1" in
+    internal) echo "channels beams" ;;
+    config)   echo "channels beams" ;;
+    *)        echo "" ;;
+  esac
+}
 
 # ---------------------------------------------------------------------------
 # Parse arguments
@@ -43,11 +45,11 @@ fi
 # Validate module name for single releases
 if [[ "$TARGET" != "all" ]]; then
   VALID=false
-  for m in "${ALL_MODULES[@]}"; do
+  for m in $ALL_MODULES; do
     [[ "$m" == "$TARGET" ]] && VALID=true && break
   done
   if [[ "$VALID" == false ]]; then
-    echo "Unknown module '${TARGET}'. Valid: ${ALL_MODULES[*]}" >&2
+    echo "Unknown module '${TARGET}'. Valid: ${ALL_MODULES}" >&2
     exit 1
   fi
 fi
@@ -63,19 +65,14 @@ echo ""
 # Determine which modules to tag and which go.mod files need updating
 # ---------------------------------------------------------------------------
 if [[ "$TARGET" == "all" ]]; then
-  MODULES_TO_TAG=("${ALL_MODULES[@]}")
-  # Update all consumer go.mod files to reference the new shared version
+  MODULES_TO_TAG="$ALL_MODULES"
   MODS_TO_UPDATE="channels beams"
-  UPDATE_DEPS=(internal config)
+  UPDATE_DEPS="internal config"
 else
-  MODULES_TO_TAG=("$TARGET")
-  # If the released module is a library, update its consumers
-  MODS_TO_UPDATE=""
-  UPDATE_DEPS=()
-  if [[ -n "${CONSUMERS[$TARGET]+x}" ]]; then
-    MODS_TO_UPDATE="${CONSUMERS[$TARGET]}"
-    UPDATE_DEPS=("$TARGET")
-  fi
+  MODULES_TO_TAG="$TARGET"
+  MODS_TO_UPDATE="$(consumers_of "$TARGET")"
+  UPDATE_DEPS=""
+  [[ -n "$MODS_TO_UPDATE" ]] && UPDATE_DEPS="$TARGET"
 fi
 
 # ---------------------------------------------------------------------------
@@ -83,7 +80,7 @@ fi
 # ---------------------------------------------------------------------------
 if [[ -n "$MODS_TO_UPDATE" ]]; then
   echo "==> Updating go.mod"
-  for dep in "${UPDATE_DEPS[@]}"; do
+  for dep in $UPDATE_DEPS; do
     for mod in $MODS_TO_UPDATE; do
       if grep -q "github.com/dylanlyu/pusher-go/${dep}" "${mod}/go.mod"; then
         sed -i '' \
@@ -100,19 +97,15 @@ fi
 # Step 2: Build + test affected modules
 # ---------------------------------------------------------------------------
 echo "==> Verifying build and tests"
-if [[ "$TARGET" == "all" ]]; then
-  BUILD_MODULES=("${ALL_MODULES[@]}")
-else
-  BUILD_MODULES=("$TARGET")
-  # Also build/test consumers if go.mod changed
-  if [[ -n "$MODS_TO_UPDATE" ]]; then
-    for m in $MODS_TO_UPDATE; do
-      BUILD_MODULES+=("$m")
-    done
-  fi
-fi
+BUILD_MODULES="$MODULES_TO_TAG"
+for m in $MODS_TO_UPDATE; do
+  case " $BUILD_MODULES " in
+    *" $m "*) ;;
+    *) BUILD_MODULES="$BUILD_MODULES $m" ;;
+  esac
+done
 
-for mod in "${BUILD_MODULES[@]}"; do
+for mod in $BUILD_MODULES; do
   go -C "$mod" build ./...
   go -C "$mod" test -race ./...
   echo "    ${mod}: OK"
@@ -122,13 +115,13 @@ echo ""
 # ---------------------------------------------------------------------------
 # Step 3: Commit go.mod changes (if any)
 # ---------------------------------------------------------------------------
-CHANGED_MODS=()
+CHANGED_MODS=""
 for mod in $MODS_TO_UPDATE; do
-  git diff --quiet "${mod}/go.mod" || CHANGED_MODS+=("${mod}/go.mod")
+  git diff --quiet "${mod}/go.mod" || CHANGED_MODS="$CHANGED_MODS ${mod}/go.mod"
 done
 
-if [[ ${#CHANGED_MODS[@]} -gt 0 ]]; then
-  git add "${CHANGED_MODS[@]}"
+if [[ -n "$CHANGED_MODS" ]]; then
+  git add $CHANGED_MODS
   git commit -m "chore(release): bump internal deps to ${TAG}"
   echo "==> Committed go.mod updates"
 fi
@@ -139,8 +132,7 @@ fi
 echo "==> Creating tags"
 
 if [[ "$TARGET" == "all" ]]; then
-  # Root flat tag only for all-modules releases
-  LAST_TAG=$(git describe --tags --match 'v[0-9]*' --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
+  LAST_TAG=$(git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --abbrev=0 2>/dev/null || git rev-list --max-parents=0 HEAD)
   CHANGELOG=$(git log "${LAST_TAG}..HEAD" --oneline --no-merges 2>/dev/null || true)
   git tag -a "${TAG}" -m "Release ${TAG}
 
@@ -148,7 +140,7 @@ ${CHANGELOG}"
   echo "    ${TAG}"
 fi
 
-for mod in "${MODULES_TO_TAG[@]}"; do
+for mod in $MODULES_TO_TAG; do
   git tag "${mod}/${TAG}"
   echo "    ${mod}/${TAG}"
 done
@@ -160,13 +152,13 @@ echo ""
 echo "==> Pushing"
 git push origin "$(git branch --show-current)"
 
-TAGS_TO_PUSH=()
-[[ "$TARGET" == "all" ]] && TAGS_TO_PUSH+=("${TAG}")
-for mod in "${MODULES_TO_TAG[@]}"; do
-  TAGS_TO_PUSH+=("${mod}/${TAG}")
+TAGS_TO_PUSH=""
+[[ "$TARGET" == "all" ]] && TAGS_TO_PUSH="$TAG"
+for mod in $MODULES_TO_TAG; do
+  TAGS_TO_PUSH="$TAGS_TO_PUSH ${mod}/${TAG}"
 done
-git push origin "${TAGS_TO_PUSH[@]}"
+git push origin $TAGS_TO_PUSH
 
 echo ""
 echo "Released: ${TAG}"
-echo "Tags    : ${TAGS_TO_PUSH[*]}"
+echo "Tags    :${TAGS_TO_PUSH}"
