@@ -95,6 +95,8 @@ fi
 
 # ---------------------------------------------------------------------------
 # Step 2: Build + test affected modules
+# Use a temporary go.work so local modules resolve without needing
+# the new tags to exist in VCS yet.
 # ---------------------------------------------------------------------------
 echo "==> Verifying build and tests"
 BUILD_MODULES="$MODULES_TO_TAG"
@@ -105,11 +107,21 @@ for m in $MODS_TO_UPDATE; do
   esac
 done
 
+# Create temporary go.work for local resolution during build
+go work init
+for m in $ALL_MODULES pusher; do
+  go work use "./$m"
+done
+trap 'rm -f go.work go.work.sum' EXIT
+
 for mod in $BUILD_MODULES; do
   go -C "$mod" build ./...
   go -C "$mod" test -race ./...
   echo "    ${mod}: OK"
 done
+
+rm -f go.work go.work.sum
+trap - EXIT
 echo ""
 
 # ---------------------------------------------------------------------------
