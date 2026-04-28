@@ -3,7 +3,7 @@ module github.com/dylanlyu/pusher-go/channels
 go 1.26
 
 require (
-	github.com/dylanlyu/pusher-go/internal v1.0.3
+	github.com/dylanlyu/pusher-go/internal v1.0.4
 	golang.org/x/crypto v0.50.0
 )
 
