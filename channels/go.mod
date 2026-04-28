@@ -1,6 +1,6 @@
 module github.com/dylanlyu/pusher-go/channels
 
-go 1.25.0
+go 1.26
 
 require (
 	github.com/dylanlyu/pusher-go/internal v1.0.0
@@ -8,8 +8,3 @@ require (
 )
 
 require golang.org/x/sys v0.43.0 // indirect
-
-replace (
-	github.com/dylanlyu/pusher-go/config => ../config
-	github.com/dylanlyu/pusher-go/internal => ../internal
-)
