@@ -118,6 +118,9 @@ fi
 go work init
 for m in $ALL_MODULES pusher; do
   go work use "./$m"
+  # Force local resolution for the current release tag even before it exists in VCS.
+  # This prevents Go from trying to fetch the untagged version from the proxy.
+  go work edit -replace "github.com/dylanlyu/pusher-go/${m}@${TAG}=./${m}"
 done
 restore_gowork() {
   rm -f go.work go.work.sum
