@@ -9,68 +9,125 @@ Unofficial Go SDK for Pusher, covering two products:
 - **Channels** — server-side publishing of WebSocket events via the Pusher HTTP API
 - **Beams** — server-side trigger of push notifications via the Pusher Beams API
 
+This is a self-maintained fork of the unmaintained official libraries (`pusher-http-go` and `push-notifications-go`). Key improvements over the originals:
+
+- Replaced archived `dgrijalva/jwt-go` with `golang-jwt/jwt/v5`
+- Replaced deprecated `ioutil` with `io`
+- Added `context.Context` to all HTTP methods
+- Fixed silent body mutation bug in publish methods
+- Fixed webhook signature bypass security issue
+
 ## Module Structure
 
-This repo uses a **Go workspace** (`go.work`). There are three independent modules:
+This repo uses a **Go workspace** (`go.work`). Five independent modules:
 
-| Module | Path | Purpose |
-|---|---|---|
-| `github.com/dylanlyu/pusher-go/channels` | `./channels` | Pusher Channels HTTP API client |
-| `github.com/dylanlyu/pusher-go/beams` | `./beams` | Pusher Beams push notification client |
-| `github.com/dylanlyu/pusher-go/internal` | `./internal` | Shared utilities (e.g. HTTP request helpers) |
+| Module | Path | Purpose | Independently versioned |
+|---|---|---|---|
+| `github.com/dylanlyu/pusher-go/channels` | `./channels` | Pusher Channels HTTP API client | ✅ |
+| `github.com/dylanlyu/pusher-go/beams` | `./beams` | Pusher Beams push notification client | ✅ |
+| `github.com/dylanlyu/pusher-go/config` | `./config` | Shared connection config types and generic Option[T] | ✅ |
+| `github.com/dylanlyu/pusher-go/pusher` | `./pusher` | Reserved for future public shared utilities | ✅ |
+| `github.com/dylanlyu/pusher-go/internal` | `./internal` | Private shared implementations (HTTP, HMAC auth) | ❌ |
+
+### Dependency graph
+
+```
+channels → config, internal, golang.org/x/crypto
+beams    → config, internal, golang-jwt/jwt/v5
+internal → (stdlib only)
+config   → (stdlib only)
+pusher   → (empty shell, no deps)
+```
+
+`internal` is not part of the public API and must never be imported by external consumers.
 
 ## Common Commands
 
 ```bash
-# Build all modules (run from repo root, workspace resolves deps)
-go build ./...
+# Build per module (workspace root `go build ./...` does not work with go.work)
+go -C channels build ./...
+go -C beams build ./...
+go -C internal build ./...
 
-# Run all tests
-go test ./...
-
-# Run tests with race detector
-go test -race ./...
+# Run all tests with race detector and coverage
+go -C channels test -race -cover ./...
+go -C beams test -race -cover ./...
+go -C internal test -race -cover ./...
 
 # Run a single test
-go test ./channels/... -run TestPublish -v
-
-# Lint (requires golangci-lint)
-golangci-lint run ./...
+go -C channels test -run TestTrigger -v ./...
 
 # Format
-gofmt -w .
+gofmt -w channels/ beams/ internal/ config/
 
 # Vet
-go vet ./...
+go -C channels vet ./...
+go -C beams vet ./...
+go -C internal vet ./...
 ```
 
-> Do **not** run `go mod init` — all three modules already have their own `go.mod`.
+> Do **not** run `go mod init` — all modules already have their own `go.mod`.
+> Do **not** run `go build ./...` from repo root — use `-C <module>` per module.
 
 ## Architecture
 
 ```
 pusher-go/
-├── go.work                  # Workspace: ties channels / beams / internal together
+├── go.work                      # Workspace: ties all modules together
+├── go.work.sum
+├── config/
+│   ├── go.mod                   # module github.com/dylanlyu/pusher-go/config
+│   └── config.go                # BaseConfig, generic Option[T any] func(*T)
+├── pusher/
+│   └── go.mod                   # module github.com/dylanlyu/pusher-go/pusher (empty shell)
+├── internal/
+│   ├── go.mod                   # module github.com/dylanlyu/pusher-go/internal
+│   ├── request/
+│   │   ├── request.go           # Do(): shared HTTP execution, ErrHTTP error type
+│   │   └── request_test.go
+│   └── auth/
+│       ├── auth.go              # HMACSignature, CheckSignature, CreateAuthMap, MD5Hex
+│       └── auth_test.go
 ├── channels/
-│   ├── go.mod               # module github.com/dylanlyu/pusher-go/channels
-│   └── client.go
-├── beams/
-│   ├── go.mod               # module github.com/dylanlyu/pusher-go/beams
-│   └── client.go
-└── internal/
-    ├── go.mod               # module github.com/dylanlyu/pusher-go/internal
-    └── request/             # shared HTTP request utilities
+│   ├── go.mod                   # module github.com/dylanlyu/pusher-go/channels
+│   ├── client.go                # Client interface, New(), all method implementations
+│   ├── options.go               # channelConfig, functional options
+│   ├── types.go                 # all public types (Event, Webhook, Channel, Users, …)
+│   ├── crypto.go                # NaCl secretbox E2E encryption (private-encrypted-*)
+│   ├── encoder.go               # trigger payload encoding, payload size check
+│   ├── webhook.go               # parseWebhook()
+│   ├── url.go                   # buildRequestURL(): HMAC-signed Pusher API URLs
+│   ├── util.go                  # ValidChannel, validateSocketID, validUserID, …
+│   └── *_test.go
+└── beams/
+    ├── go.mod                   # module github.com/dylanlyu/pusher-go/beams
+    ├── client.go                # Client interface, New(), all method implementations
+    ├── options.go               # beamConfig, functional options
+    ├── types.go                 # publishResponse, errorResponse
+    └── *_test.go
 ```
 
-`channels` and `beams` are the public-facing packages. `internal` holds cross-cutting utilities (currently HTTP request helpers); it is imported only by the two product packages and is not part of the public API.
+## Design Constraints
 
-### Design Constraints
+- **Immutable request objects** — never mutate the caller's data (use `copyMapWithKey`).
+- **Interface-first** — public surface is a `Client` interface; concrete `client` struct is unexported, enabling mocking via `http.RoundTripper` in tests.
+- **Error wrapping** — all errors use `fmt.Errorf("pkg: ...: %w", err)` for `errors.Is`/`errors.As` compatibility.
+- **No global mutable state** — no `init()` side effects; `defaultHeaders()` returns a fresh map on each call instead of a package-level var.
+- **context.Context on all HTTP methods** — callers control timeout and cancellation.
 
-- **Immutable request objects** — construct, then send; never mutate after construction.
-- **Interface-first** — the public surface is a `Client` interface; the concrete struct is unexported or clearly marked as an implementation detail, enabling mocking in consumer tests.
-- **Error wrapping** — all returned errors are wrapped with `fmt.Errorf("...: %w", err)` so callers can `errors.Is`/`errors.As`.
-- **No global state** — no `init()` side effects, no package-level variables that change at runtime.
+## HTTP Client Contract
 
-### HTTP Client Contract
+Both `channels` and `beams` accept an optional `*http.Client` via `WithHTTPClient(hc)` at construction time. Zero value falls back to `http.DefaultClient`. Tests use `roundTripFunc` (a `http.RoundTripper` adapter) for transport-level mocking without real network calls.
 
-Both `channels` and `beams` accept an optional `*http.Client` at construction time (functional option or struct field). The zero value falls back to `http.DefaultClient`. This makes tests deterministic via transport-level mocking (`http.RoundTripper`).
+## workspace-local module resolution
+
+`channels/go.mod` and `beams/go.mod` contain `replace` directives pointing to `../config` and `../internal`. These are required alongside `go.work` entries so that `go get` resolves local modules without hitting the module proxy.
+
+## Test Coverage Targets
+
+| Module | Target | Current |
+|---|---|---|
+| `channels` | ≥ 80% | ~82% |
+| `beams` | ≥ 80% | ~88% |
+| `internal/auth` | ≥ 80% | 100% |
+| `internal/request` | ≥ 80% | ~86% |

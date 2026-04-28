@@ -9,7 +9,7 @@ An **unofficial** Go SDK for [Pusher](https://pusher.com), covering two products
 
 ## Installation
 
-Install only the product(s) you need — `channels` and `beams` are separate Go modules:
+Install only the product(s) you need — `channels` and `beams` are independent Go modules:
 
 ```bash
 # Pusher Channels
@@ -30,80 +30,77 @@ Requires Go 1.22 or later.
 ```go
 import "github.com/dylanlyu/pusher-go/channels"
 
-client := channels.NewClient(channels.Config{
-    AppID:   "APP_ID",
-    Key:     "APP_KEY",
-    Secret:  "APP_SECRET",
-    Cluster: "APP_CLUSTER",
-})
-```
-
-**HTTPS:**
-
-```go
-client := channels.NewClient(channels.Config{
-    AppID:   "APP_ID",
-    Key:     "APP_KEY",
-    Secret:  "APP_SECRET",
-    Cluster: "mt1",
-    Secure:  true,
-})
+client, err := channels.New("APP_ID", "APP_KEY", "APP_SECRET",
+    channels.WithCluster("mt1"),
+    channels.WithSecure(true),
+)
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 **Custom HTTP client (e.g. for timeouts):**
 
 ```go
-import "net/http"
-import "time"
-
 httpClient := &http.Client{Timeout: 3 * time.Second}
-client := channels.NewClient(channels.Config{...}, channels.WithHTTPClient(httpClient))
+client, err := channels.New("APP_ID", "APP_KEY", "APP_SECRET",
+    channels.WithCluster("mt1"),
+    channels.WithHTTPClient(httpClient),
+)
 ```
 
-**From environment variable** (`PUSHER_URL=http://<key>:<secret>@api-<cluster>.pusher.com/apps/<app_id>`):
+**Available options:**
 
-```go
-client, err := channels.NewClientFromEnv("PUSHER_URL")
-```
+| Option | Description |
+|---|---|
+| `WithCluster(cluster string)` | Set Pusher cluster, e.g. `"eu"`, `"ap1"` |
+| `WithHost(host string)` | Override API host (ignores cluster if set) |
+| `WithSecure(secure bool)` | Force HTTPS |
+| `WithHTTPClient(hc *http.Client)` | Custom HTTP client |
+| `WithEncryptionMasterKeyBase64(key string)` | 32-byte E2E encryption master key (base64) |
+| `WithMaxMessagePayloadKB(kb int)` | Override default 10 KB payload limit |
 
 ### Triggering Events
+
+All methods accept a `context.Context` as the first argument.
 
 **Single channel:**
 
 ```go
+ctx := context.Background()
 data := map[string]string{"message": "hello"}
-err := client.Trigger("my-channel", "my-event", data)
+err := client.Trigger(ctx, "my-channel", "my-event", data)
 ```
 
 **Exclude a socket (prevent echo):**
 
 ```go
 socketID := "1234.12"
-err := client.TriggerWithParams("my-channel", "my-event", data, channels.TriggerParams{
-    SocketID: &socketID,
-})
+result, err := client.TriggerWithParams(ctx, "my-channel", "my-event", data,
+    channels.TriggerParams{SocketID: &socketID},
+)
 ```
 
 **Multiple channels:**
 
 ```go
-err := client.TriggerMulti([]string{"ch-one", "ch-two"}, "my-event", data)
+err := client.TriggerMulti(ctx, []string{"ch-one", "ch-two"}, "my-event", data)
 ```
 
-**Batch (up to 10 events in a single request):**
+**Batch (up to 10 events in one request):**
 
 ```go
 batch := []channels.Event{
     {Channel: "ch-one", Name: "event-a", Data: "hello"},
     {Channel: "ch-two", Name: "event-b", Data: "world"},
 }
-err := client.TriggerBatch(batch)
+result, err := client.TriggerBatch(ctx, batch)
 ```
 
 **Send to a specific authenticated user:**
 
 ```go
-err := client.SendToUser("user-123", "my-event", data)
+err := client.SendToUser(ctx, "user-123", "my-event", data)
 ```
 
 ### Authorizing Channels
@@ -133,29 +130,29 @@ memberData := channels.MemberData{
 response, err := client.AuthorizePresenceChannel(body, memberData)
 ```
 
-**Authenticating users (Channels User Authentication):**
+**User authentication (Channels User Authentication):**
 
 ```go
-userData := map[string]interface{}{"id": "user-123", "name": "Alice"}
+userData := map[string]any{"id": "user-123", "name": "Alice"}
 response, err := client.AuthenticateUser(body, userData)
 ```
 
 ### Application State
 
 ```go
-// List all channels (optionally filter by prefix)
+// List channels (optionally filter by prefix)
 prefix := "presence-"
 info := "user_count"
-chs, err := client.Channels(channels.ChannelsParams{
+chs, err := client.Channels(ctx, channels.ChannelsParams{
     FilterByPrefix: &prefix,
     Info:           &info,
 })
 
 // Single channel state
-ch, err := client.Channel("presence-chatroom", channels.ChannelParams{Info: &info})
+ch, err := client.Channel(ctx, "presence-chatroom", channels.ChannelParams{Info: &info})
 
 // Users in a presence channel
-users, err := client.GetChannelUsers("presence-chatroom")
+users, err := client.GetChannelUsers(ctx, "presence-chatroom")
 ```
 
 ### Webhook Validation
@@ -183,16 +180,13 @@ openssl rand -base64 32
 ```
 
 ```go
-client := channels.NewClient(channels.Config{
-    AppID:                     "APP_ID",
-    Key:                       "APP_KEY",
-    Secret:                    "APP_SECRET",
-    Cluster:                   "mt1",
-    EncryptionMasterKeyBase64: "<base64_master_key>",
-})
+client, err := channels.New("APP_ID", "APP_KEY", "APP_SECRET",
+    channels.WithCluster("mt1"),
+    channels.WithEncryptionMasterKeyBase64("<base64_master_key>"),
+)
 ```
 
-Only channels prefixed with `private-encrypted-` are encrypted.
+Only channels prefixed with `private-encrypted-` are encrypted. Encrypted channels cannot be triggered alongside non-encrypted channels in the same `TriggerMulti` call.
 
 ---
 
@@ -203,33 +197,42 @@ Only channels prefixed with `private-encrypted-` are encrypted.
 ```go
 import "github.com/dylanlyu/pusher-go/beams"
 
-client, err := beams.NewClient("INSTANCE_ID", "SECRET_KEY")
+client, err := beams.New("INSTANCE_ID", "SECRET_KEY")
 if err != nil {
     log.Fatal(err)
 }
 ```
 
+**Available options:**
+
+| Option | Description |
+|---|---|
+| `WithHTTPClient(hc *http.Client)` | Custom HTTP client |
+| `WithBaseURL(url string)` | Override default Beams API endpoint |
+
 ### Publish to Interests
 
 ```go
-publishRequest := map[string]interface{}{
-    "apns": map[string]interface{}{
-        "aps": map[string]interface{}{
-            "alert": map[string]interface{}{
+ctx := context.Background()
+
+publishRequest := map[string]any{
+    "apns": map[string]any{
+        "aps": map[string]any{
+            "alert": map[string]any{
                 "title": "Hello",
                 "body":  "Hello, world",
             },
         },
     },
-    "fcm": map[string]interface{}{
-        "notification": map[string]interface{}{
+    "fcm": map[string]any{
+        "notification": map[string]any{
             "title": "Hello",
             "body":  "Hello, world",
         },
     },
 }
 
-publishID, err := client.PublishToInterests([]string{"hello", "world"}, publishRequest)
+publishID, err := client.PublishToInterests(ctx, []string{"hello", "world"}, publishRequest)
 if err != nil {
     log.Fatal(err)
 }
@@ -241,7 +244,7 @@ Constraints: up to 100 interests per request; interest names may contain `A-Za-z
 ### Publish to Users
 
 ```go
-publishID, err := client.PublishToUsers([]string{"user-001", "user-002"}, publishRequest)
+publishID, err := client.PublishToUsers(ctx, []string{"user-001", "user-002"}, publishRequest)
 ```
 
 Up to 1,000 user IDs per request.
@@ -252,7 +255,7 @@ Use this in your Beams authentication endpoint to issue signed JWTs to verified 
 
 ```go
 http.HandleFunc("/pusher/beams-auth", func(w http.ResponseWriter, r *http.Request) {
-    // Verify the user via your own auth system.
+    // Verify the user via your own auth system first.
     userID := yourAuth.GetUserID(r)
     if userID == "" || userID != r.URL.Query().Get("user_id") {
         http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -275,7 +278,7 @@ http.HandleFunc("/pusher/beams-auth", func(w http.ResponseWriter, r *http.Reques
 Removes all devices associated with a user from Beams:
 
 ```go
-err := client.DeleteUser("user-001")
+err := client.DeleteUser(ctx, "user-001")
 ```
 
 ---
