@@ -107,12 +107,26 @@ for m in $MODS_TO_UPDATE; do
   esac
 done
 
-# Create temporary go.work for local resolution during build
+# Create temporary go.work for local resolution during build.
+# Stash any existing go.work so we can restore it after.
+GOWORK_EXISTED=false
+if [[ -f go.work ]]; then
+  mv go.work go.work.bak
+  mv go.work.sum go.work.sum.bak 2>/dev/null || true
+  GOWORK_EXISTED=true
+fi
 go work init
 for m in $ALL_MODULES pusher; do
   go work use "./$m"
 done
-trap 'rm -f go.work go.work.sum' EXIT
+restore_gowork() {
+  rm -f go.work go.work.sum
+  if [[ "$GOWORK_EXISTED" == true ]]; then
+    mv go.work.bak go.work
+    mv go.work.sum.bak go.work.sum 2>/dev/null || true
+  fi
+}
+trap restore_gowork EXIT
 
 for mod in $BUILD_MODULES; do
   go -C "$mod" build ./...
@@ -120,7 +134,7 @@ for mod in $BUILD_MODULES; do
   echo "    ${mod}: OK"
 done
 
-rm -f go.work go.work.sum
+restore_gowork
 trap - EXIT
 echo ""
 
