@@ -9,17 +9,11 @@ An **unofficial** Go SDK for [Pusher](https://pusher.com), covering two products
 
 ## Installation
 
-Install only the product(s) you need — `channels` and `beams` are independent Go modules:
-
 ```bash
-# Pusher Channels
-go get github.com/dylanlyu/pusher-go/channels
-
-# Pusher Beams
-go get github.com/dylanlyu/pusher-go/beams
+go get github.com/dylanlyu/pusher-go
 ```
 
-Requires Go 1.22 or later.
+Requires Go 1.25 or later.
 
 ---
 
@@ -28,7 +22,7 @@ Requires Go 1.22 or later.
 ### Configuration
 
 ```go
-import "github.com/dylanlyu/pusher-go/channels"
+import "github.com/dylanlyu/pusher-go/service/channels"
 
 client, err := channels.New("APP_ID", "APP_KEY", "APP_SECRET",
     channels.WithCluster("mt1"),
@@ -85,6 +79,14 @@ result, err := client.TriggerWithParams(ctx, "my-channel", "my-event", data,
 
 ```go
 err := client.TriggerMulti(ctx, []string{"ch-one", "ch-two"}, "my-event", data)
+```
+
+**Multiple channels with params:**
+
+```go
+result, err := client.TriggerMultiWithParams(ctx, []string{"ch-one", "ch-two"}, "my-event", data,
+    channels.TriggerParams{SocketID: &socketID},
+)
 ```
 
 **Batch (up to 10 events in one request):**
@@ -155,6 +157,14 @@ ch, err := client.Channel(ctx, "presence-chatroom", channels.ChannelParams{Info:
 users, err := client.GetChannelUsers(ctx, "presence-chatroom")
 ```
 
+### Terminating User Connections
+
+Force-disconnect all active connections for a user:
+
+```go
+err := client.TerminateUserConnections(ctx, "user-123")
+```
+
 ### Webhook Validation
 
 ```go
@@ -195,7 +205,7 @@ Only channels prefixed with `private-encrypted-` are encrypted. Encrypted channe
 ### Configuration
 
 ```go
-import "github.com/dylanlyu/pusher-go/beams"
+import "github.com/dylanlyu/pusher-go/service/beams"
 
 client, err := beams.New("INSTANCE_ID", "SECRET_KEY")
 if err != nil {
