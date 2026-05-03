@@ -273,11 +273,12 @@ func (c *client) TerminateUserConnections(ctx context.Context, userID string) er
 		return fmt.Errorf("channels: invalid user ID %q", userID)
 	}
 	path := fmt.Sprintf("/apps/%s/users/%s/terminate_connections", c.cfg.appID, userID)
-	u, err := buildRequestURL("POST", c.cfg.host, path, c.cfg.key, c.cfg.secret, c.cfg.secure, nil, nil, c.cfg.cluster)
+	body := []byte("{}")
+	u, err := buildRequestURL("POST", c.cfg.host, path, c.cfg.key, c.cfg.secret, c.cfg.secure, body, nil, c.cfg.cluster)
 	if err != nil {
 		return err
 	}
-	_, err = request.Do(ctx, c.cfg.httpClientOrDefault(), "POST", u, nil, defaultHeaders())
+	_, err = request.Do(ctx, c.cfg.httpClientOrDefault(), "POST", u, body, defaultHeaders())
 	return err
 }
 
